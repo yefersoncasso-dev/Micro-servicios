@@ -1,0 +1,18 @@
+{
+  "name": "ms-eventos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plantilla de preparación M3 con recurso configurable",
+  "main": "src/index.js",
+  "engines": { "node": ">=22.9.0" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "dev": "node --watch --env-file-if-exists=.env src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.24.6"
+  }
+}
