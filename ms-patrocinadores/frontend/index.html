@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Examen M3 · eventos y patrocinadores</title>
+<style>
+  /* Frontend del examen: se sirve desde el DocumentRoot del host virtual
+     y consume la API por el mismo nombre (rutas /api), sin CORS. */
+  :root { --fondo:#f6f7f9; --panel:#fff; --texto:#1d2330; --suave:#5d6677; --borde:#dde1e8;
+          --acento:#2f5fd0; --bien:#1f8a4c; --mal:#c0392b; --aviso:#9a6b00; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background:var(--fondo); color:var(--texto); }
+  header { background:var(--panel); border-bottom:1px solid var(--borde); padding:16px 24px; }
+  header h1 { margin:0; font-size:18px; }
+  header p { margin:2px 0 0; color:var(--suave); font-size:13px; }
+  main { max-width:1100px; margin:0 auto; padding:24px 16px; display:grid; gap:20px; }
+  section { background:var(--panel); border:1px solid var(--borde); border-radius:10px; padding:18px 20px; }
+  h2 { margin:0 0 12px; font-size:16px; }
+  form { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+  label { display:grid; gap:4px; font-size:13px; color:var(--suave); }
+  input { font:inherit; padding:7px 10px; border:1px solid var(--borde); border-radius:6px; min-width:220px; }
+  button { font:inherit; padding:8px 16px; border:0; border-radius:6px; background:var(--acento); color:#fff; cursor:pointer; }
+  button.secundario { background:transparent; color:var(--acento); border:1px solid var(--acento); }
+  .estado { font-size:13px; margin-top:10px; }
+  .ok { color:var(--bien); } .error { color:var(--mal); } .aviso { color:var(--aviso); }
+  .tabla { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--borde); vertical-align:top; }
+  th { color:var(--suave); font-weight:600; font-size:12.5px; text-transform:uppercase; letter-spacing:.03em; }
+  td.compuesto { background:#eef3ff; }
+  .vacio { color:var(--suave); font-style:italic; }
+  .oculto { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Examen Módulo 3 · ms-eventos y ms-patrocinadores</h1>
+  <p id="origen"></p>
+</header>
+<main>
+  <section id="sesion">
+    <h2>Iniciar sesión</h2>
+    <form id="form-login">
+      <label>Correo <input id="email" type="email" value="admin@empresa.com" required></label>
+      <label>Contraseña <input id="password" type="password" required></label>
+      <button type="submit">Entrar</button>
+      <button type="button" class="secundario oculto" id="salir">Salir</button>
+    </form>
+    <div class="estado" id="estado-login"></div>
+  </section>
+
+  <section>
+    <h2>ms-eventos <span class="vacio">(GET /api/eventos)</span></h2>
+    <div class="estado" id="estado-recurso">Inicie sesión para ver los datos.</div>
+    <div class="tabla" id="tabla-recurso"></div>
+  </section>
+
+  <section>
+    <h2>ms-patrocinadores <span class="vacio">(GET /api/patrocinadores)</span></h2>
+    <div class="estado" id="estado-proveedor">Inicie sesión para ver los datos.</div>
+    <div class="tabla" id="tabla-proveedor"></div>
+  </section>
+</main>
+
+<script>
+// ---- Configuración (ya viene lista para su ficha; no hay que cambiarla) ----
+const API = '/api';                 // la misma ruta que publica el host virtual del examen
+const RECURSO = 'eventos';      // microservicio asignado a la pareja
+const PROVEEDOR = 'patrocinadores';  // microservicio proveedor
+// ---------------------------------------------------------------------------
+
+let token = null;
+const $ = (id) => document.getElementById(id);
+$('origen').textContent = 'Servido desde ' + location.origin + ' · API en ' + location.origin + API;
+
+function mostrarEstado(id, texto, clase) {
+  const el = $(id);
+  el.textContent = texto;
+  el.className = 'estado ' + (clase || '');
+}
+
+function textoCelda(valor) {
+  if (valor === null || valor === undefined) return null;
+  if (typeof valor === 'object') {
+    // objeto compuesto: se muestra su nombre (o el primer texto que tenga)
+    const nombre = valor.nombre || Object.values(valor).find((v) => typeof v === 'string');
+    return (nombre || '') + (valor.id !== undefined ? ' (id ' + valor.id + ')' : '');
+  }
+  if (typeof valor === 'boolean') return valor ? 'sí' : 'no';
+  return String(valor);
+}
+
+function pintarTabla(id, filas) {
+  const cont = $(id);
+  cont.innerHTML = '';
+  if (!Array.isArray(filas) || filas.length === 0) {
+    cont.innerHTML = '<p class="vacio">Sin registros.</p>';
+    return;
+  }
+  const columnas = [...new Set(filas.flatMap((f) => Object.keys(f)))];
+  const compuestas = columnas.filter((c) => filas.some((f) => f[c] !== null && typeof f[c] === 'object'));
+  const tabla = document.createElement('table');
+  const cab = tabla.createTHead().insertRow();
+  columnas.forEach((c) => { const th = document.createElement('th'); th.textContent = c; cab.appendChild(th); });
+  const cuerpo = tabla.createTBody();
+  filas.forEach((f) => {
+    const tr = cuerpo.insertRow();
+    columnas.forEach((c) => {
+      const td = tr.insertCell();
+      const texto = textoCelda(f[c]);
+      if (texto === null) { td.textContent = '—'; td.className = 'vacio'; }
+      else td.textContent = texto;
+      if (compuestas.includes(c)) td.classList.add('compuesto');
+    });
+  });
+  cont.appendChild(tabla);
+}
+
+async function cargar(recurso, idEstado, idTabla) {
+  mostrarEstado(idEstado, 'Consultando ' + API + '/' + recurso + '…');
+  try {
+    const r = await fetch(API + '/' + recurso, { headers: { Authorization: 'Bearer ' + token } });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok) {
+      mostrarEstado(idEstado, r.status + ' · ' + ((cuerpo && cuerpo.error) || r.statusText), 'error');
+      $(idTabla).innerHTML = '';
+      return;
+    }
+    const avisos = [...new Set((cuerpo || []).map((f) => f.aviso).filter(Boolean))];
+    mostrarEstado(idEstado, r.status + ' · ' + cuerpo.length + ' registros' + (avisos.length ? ' · aviso: ' + avisos.join('; ') : ''),
+      avisos.length ? 'aviso' : 'ok');
+    pintarTabla(idTabla, cuerpo);
+  } catch (e) {
+    mostrarEstado(idEstado, 'No hubo respuesta de ' + API + '/' + recurso + ' (¿está la ruta en el host virtual?)', 'error');
+  }
+}
+
+$('form-login').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  mostrarEstado('estado-login', 'Iniciando sesión…');
+  try {
+    const r = await fetch(API + '/usuarios/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: $('email').value, password: $('password').value }),
+    });
+    const cuerpo = await r.json().catch(() => null);
+    if (!r.ok || !cuerpo || !cuerpo.token) {
+      mostrarEstado('estado-login', r.status + ' · ' + ((cuerpo && cuerpo.error) || 'No se pudo iniciar sesión'), 'error');
+      return;
+    }
+    token = cuerpo.token;
+    const u = cuerpo.usuario || {};
+    mostrarEstado('estado-login', 'Sesión iniciada' + (u.email ? ' como ' + u.email : '') + (u.rol ? ' (' + u.rol + ')' : ''), 'ok');
+    $('salir').classList.remove('oculto');
+    cargar(RECURSO, 'estado-recurso', 'tabla-recurso');
+    cargar(PROVEEDOR, 'estado-proveedor', 'tabla-proveedor');
+  } catch (e) {
+    mostrarEstado('estado-login', 'No hubo respuesta de ' + API + '/usuarios/login', 'error');
+  }
+});
+
+$('salir').addEventListener('click', () => {
+  token = null;
+  $('salir').classList.add('oculto');
+  mostrarEstado('estado-login', 'Sesión cerrada.');
+  ['recurso', 'proveedor'].forEach((x) => { $('tabla-' + x).innerHTML = ''; mostrarEstado('estado-' + x, 'Inicie sesión para ver los datos.'); });
+});
+</script>
+</body>
+</html>
